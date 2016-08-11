@@ -88,7 +88,7 @@ func createSchema(db *sql.DB) error {
 	return nil
 }
 
-func writeDatabase(dbFilename string, trades chan Trade, t tomb.Tomb, wg sync.WaitGroup) {
+func writeDatabase(dbFilename string, trades chan Trade, t *tomb.Tomb, wg sync.WaitGroup) {
 	defer wg.Done()
 	db, err := sql.Open("sqlite3", dbFilename)
 	if err != nil {
@@ -112,7 +112,7 @@ func writeDatabase(dbFilename string, trades chan Trade, t tomb.Tomb, wg sync.Wa
 	}
 }
 
-func handleClient(client cppio.IoLine, trades chan Trade, t tomb.Tomb, wg sync.WaitGroup) {
+func handleClient(client cppio.IoLine, trades chan Trade, t *tomb.Tomb, wg sync.WaitGroup) {
 	defer client.Close()
 
 	wg.Add(1)
@@ -157,7 +157,7 @@ func handleClient(client cppio.IoLine, trades chan Trade, t tomb.Tomb, wg sync.W
 	}
 }
 
-func listenClients(endpoint string, trades chan Trade, t tomb.Tomb, wg sync.WaitGroup) error {
+func listenClients(endpoint string, trades chan Trade, t *tomb.Tomb, wg sync.WaitGroup) error {
 	defer wg.Done()
 	server, err := cppio.CreateServer(endpoint)
 	if err != nil {
@@ -174,8 +174,6 @@ func listenClients(endpoint string, trades chan Trade, t tomb.Tomb, wg sync.Wait
 			go handleClient(client, trades, t, wg)
 		}
 	}
-
-	return nil
 }
 
 func main () {
@@ -192,8 +190,8 @@ func main () {
 	var theTomb tomb.Tomb
 
 	wg.Add(2)
-	go writeDatabase(*dbFilename, trades, theTomb, wg)
-	go listenClients(*endpoint, trades, theTomb, wg)
+	go writeDatabase(*dbFilename, trades, &theTomb, wg)
+	go listenClients(*endpoint, trades, &theTomb, wg)
 
 	wg.Wait()
 }
