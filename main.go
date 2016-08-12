@@ -7,22 +7,24 @@ import ("database/sql"
 		"fmt"
 		"time"
 		"encoding/json"
+		"net/http"
+		"html/template"
 		_ "github.com/mattn/go-sqlite3"
 		"gopkg.in/tomb.v2"
 		"github.com/paked/configure")
 
 type Trade struct {
-	account string
-	security string
-	price float64
-	quantity int // Positive value - buy, negative - sell
-	volume float64
-	volumeCurrency string
-	strategyId string
-	signalId string
-	comment string
-	timestamp uint64
-	useconds uint32
+	Account string
+	Security string
+	Price float64
+	Quantity int // Positive value - buy, negative - sell
+	Volume float64
+	VolumeCurrency string
+	StrategyId string
+	SignalId string
+	Comment string
+	Timestamp uint64
+	Useconds uint32
 }
 
 type JsonTradeFields struct {
@@ -57,17 +59,17 @@ func convertTrade(t JsonTradeFields) (Trade, error) {
 	if err != nil {
 		return Trade {}, err
 	}
-	return Trade {account : t.Account,
-		security : t.Security,
-		price : t.Price,
-		quantity : t.Quantity * quantityFactor,
-		volume : t.Volume,
-		volumeCurrency : t.VolumeCurrency,
-		strategyId : t.Strategy,
-		signalId : t.Signal_id,
-		comment : t.Order_comment,
-		timestamp : uint64(ts.Unix()),
-		useconds : uint32(ts.Nanosecond() / 1000)}, nil
+	return Trade {Account : t.Account,
+		Security : t.Security,
+		Price : t.Price,
+		Quantity : t.Quantity * quantityFactor,
+		Volume : t.Volume,
+		VolumeCurrency : t.VolumeCurrency,
+		StrategyId : t.Strategy,
+		SignalId : t.Signal_id,
+		Comment : t.Order_comment,
+		Timestamp : uint64(ts.Unix()),
+		Useconds : uint32(ts.Nanosecond() / 1000)}, nil
 }
 
 func insertTrade(db *sql.DB, trade Trade) error {
@@ -76,8 +78,8 @@ func insertTrade(db *sql.DB, trade Trade) error {
 		return err
 	}
 
-	_, err = stmt.Exec(trade.account, trade.security, trade.price, trade.quantity, trade.volume, trade.volumeCurrency, trade.strategyId, trade.signalId,
-		trade.comment, trade.timestamp, trade.useconds)
+	_, err = stmt.Exec(trade.Account, trade.Security, trade.Price, trade.Quantity, trade.Volume, trade.VolumeCurrency, trade.StrategyId, trade.SignalId,
+		trade.Comment, trade.Timestamp, trade.Useconds)
 
 	if err != nil {
 		return err
@@ -169,6 +171,7 @@ func listenClients(endpoint string, trades chan Trade, t *tomb.Tomb, wg sync.Wai
 	if err != nil {
 		return err
 	}
+	log.Printf("Listening on %s", endpoint)
 
 	for {
 		if !t.Alive() {
@@ -180,6 +183,69 @@ func listenClients(endpoint string, trades chan Trade, t *tomb.Tomb, wg sync.Wai
 			go handleClient(client, trades, t, wg)
 		}
 	}
+}
+
+func readAllTrades(dbFilename string) []Trade {
+	db, err := sql.Open("sqlite3", dbFilename)
+	if err != nil {
+		log.Fatalf("Unable to open database: %s", err.Error())
+	}
+
+	var trades []Trade
+	rows, err := db.Query("SELECT account, security, price, quantity, volume, volumeCurrency, strategyId, signalId, comment, timestamp, useconds FROM trades")
+	if err != nil {
+		log.Printf("Unable to open DB: %s", err.Error())
+		return trades
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var t Trade
+		err = rows.Scan(&t.Account, &t.Security, &t.Price, &t.Quantity, &t.Volume, &t.VolumeCurrency, &t.StrategyId, &t.SignalId, &t.Comment, &t.Timestamp, &t.Useconds)
+		if err != nil {
+			log.Printf("Unable to get trades: %s", err.Error())
+			return trades
+		}
+		trades = append(trades, t)
+	}
+
+	return trades
+}
+
+type IndexHandler struct {
+	dbFilename string
+}
+
+func (handler IndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	type IndexPageData struct {
+		Title string
+		Trades []Trade
+	}
+	trades := readAllTrades(handler.dbFilename)
+	page := IndexPageData { "Index", trades }
+	t, err := template.New("index.html").Funcs(template.FuncMap {
+		"Abs" : func (a int) int {
+		if a < 0 {
+			return -a
+		} else {
+			return a
+		}},
+		"ConvertTime" : func (t uint64, us uint32) string {
+			return time.Unix(int64(t), int64(us) * 1000).Format("2006-01-02 15:04:05.000")
+		}}).ParseFiles("content/templates/index.html")
+	if err != nil {
+		log.Printf("Unable to parse template: %s", err.Error())
+		return
+	}
+	err = t.Execute(w, page)
+	if err != nil {
+		log.Printf("Unable to execute template: %s", err.Error())
+	}
+}
+
+func httpServer(dbFilename string, t *tomb.Tomb) {
+	index := IndexHandler {dbFilename}
+	http.Handle("/", index)
+	http.ListenAndServe(":5541", nil)
 }
 
 func main () {
@@ -198,6 +264,7 @@ func main () {
 	wg.Add(2)
 	go writeDatabase(*dbFilename, trades, &theTomb, wg)
 	go listenClients(*endpoint, trades, &theTomb, wg)
+	go httpServer(*dbFilename, &theTomb)
 
 	wg.Wait()
 }

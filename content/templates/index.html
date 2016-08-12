@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>{{.Title}}</title>
+</head>
+<body>
+	<table>
+		<tr>
+			<td>Time</td>
+			<td>Account</td>
+			<td>Security</td>
+			<td>Operation</td>
+			<td>Price</td>
+			<td>Quantity</td>
+			<td>Volume</td>
+			<td>Strategy ID</td>
+			<td>Signal ID</td>
+		</tr>
+	{{range $index, $element := .Trades}}
+		<tr>
+			<td>{{ConvertTime .Timestamp .Useconds}}</td>
+			<td>{{.Account}}</td>
+			<td>{{.Security}}</td>
+			<td>{{if gt .Quantity 0 }} Buy {{else}} Sell {{end}}</td>
+			<td>{{.Price}}</td>
+			<td>{{Abs .Quantity}}</td>
+			<td>{{printf "%.2f" .Volume}} {{.VolumeCurrency}}</td>
+			<td>{{.StrategyId}}</td>
+			<td>{{.SignalId}}</td>
+		</tr>
+	{{end}}
+	</table>
+</body>
+</html>
