@@ -245,6 +245,7 @@ func (handler IndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func httpServer(dbFilename string, t *tomb.Tomb) {
 	index := IndexHandler {dbFilename}
 	http.Handle("/", index)
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("content/static"))))
 	http.ListenAndServe(":5541", nil)
 }
 
