@@ -50,3 +50,96 @@ func (handler TradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Unable to execute template: %s", err.Error())
 	}
 }
+
+type ClosedTradesHandler struct {
+	DbFilename string
+}
+
+type ClosedTrade struct {
+	Account string
+	Security string
+	EntryTime time.Time
+	ExitTime time.Time
+	Profit float64
+	ProfitCurrency string
+	Strategy string
+}
+
+func sign(value int) float64 {
+	if value >= 0 {
+		return 1
+	} else {
+		return -1
+	}
+}
+
+func aggregateClosedTrades(trades []goldmine.Trade) []ClosedTrade {
+	var result []ClosedTrade
+
+	type BalanceKey struct {
+		Account string
+		Security string
+		Strategy string
+	}
+	type BalanceEntry struct {
+		balance int
+		trade ClosedTrade
+	}
+	balance := make(map[BalanceKey]BalanceEntry)
+
+	for _, trade := range trades {
+		key := BalanceKey { trade.Account, trade.Security, trade.StrategyId }
+		balanceEntry := balance[key]
+		log.Printf("Trade: %s %d", trade.Security, trade.Quantity)
+		log.Printf("Balance: %d", balanceEntry.balance)
+		if balanceEntry.balance == 0 {
+			balanceEntry.balance = trade.Quantity
+			balanceEntry.trade.Account = trade.Account
+			balanceEntry.trade.Security = trade.Security
+			balanceEntry.trade.EntryTime = time.Unix(int64(trade.Timestamp), int64(trade.Useconds))
+			balanceEntry.trade.ProfitCurrency = trade.VolumeCurrency
+			balanceEntry.trade.Profit = trade.Volume * sign(trade.Quantity)
+			balanceEntry.trade.Strategy = trade.StrategyId
+			balance[key] = balanceEntry
+		} else {
+			balanceEntry.balance += trade.Quantity
+			balanceEntry.trade.Profit += trade.Volume * sign(trade.Quantity)
+
+			if balanceEntry.balance == 0 {
+				balanceEntry.trade.ExitTime = time.Unix(int64(trade.Timestamp), int64(trade.Useconds))
+				result = append(result, balanceEntry.trade)
+			}
+			balance[key] = balanceEntry
+		}
+	}
+
+	return result
+}
+
+func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	type ClosedTradesPageData struct {
+		Title string
+		Trades []ClosedTrade
+	}
+	trades := aggregateClosedTrades(db.ReadAllTrades(handler.DbFilename))
+
+	page := ClosedTradesPageData { "Closed trades", trades }
+	t, err := template.New("closed_trades.html").Funcs(template.FuncMap {
+		"Abs" : func (a int) int {
+		if a < 0 {
+			return -a
+		} else {
+			return a
+		}},
+		"PrintTime" : func (t time.Time) string {
+			return t.Format("2006-01-02 15:04:05.000")
+		}}).ParseFiles("content/templates/closed_trades.html")
+	if err != nil {
+		log.Printf("Unable to parse template: %s", err.Error())
+		return
+	}
+	err = t.Execute(w, page)
+	if err != nil {
+		log.Printf("Unable to execute template: %s", err.Error())
+	}
+}

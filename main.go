@@ -124,10 +124,10 @@ func listenClients(endpoint string, trades chan goldmine.Trade, t *tomb.Tomb, wg
 	}
 }
 
-
 func httpServer(dbFilename string, t *tomb.Tomb) {
 	trades := handlers.TradesHandler {dbFilename}
 	http.Handle("/trades/", trades)
+	http.Handle("/closed_trades/", handlers.ClosedTradesHandler {dbFilename})
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("content/static"))))
 	http.ListenAndServe(":5541", nil)
 }

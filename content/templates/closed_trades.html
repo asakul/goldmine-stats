@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" href="/static/css/bootstrap.min.css" />
+<title>{{.Title}}</title>
+</head>
+<body>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <script src="/static/js/bootstrap.min.js"></script>
+	<table class="table table-condensed">
+		<tr>
+			<td>Account</td>
+			<td>Security</td>
+			<td>EntryTime</td>
+			<td>ExitTime</td>
+			<td>Profit</td>
+			<td>Strategy ID</td>
+		</tr>
+	{{range $index, $element := .Trades}}
+		<tr>
+			<td>{{.Account}}</td>
+			<td>{{.Security}}</td>
+			<td>{{PrintTime .EntryTime}}</td>
+			<td>{{PrintTime .ExitTime}}</td>
+			<td>{{printf "%.2f" .Profit}} {{.ProfitCurrency}}</td>
+			<td>{{.Strategy}}</td>
+		</tr>
+	{{end}}
+	</table>
+</body>
+</html>
