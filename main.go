@@ -221,6 +221,18 @@ func (handler IndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Trades []Trade
 	}
 	trades := readAllTrades(handler.dbFilename)
+	if len(trades) >= 2 {
+		for i := 0; i < len(trades) / 2; i++ {
+			a, b := i, len(trades) - i - 1
+			if a == b {
+				break
+			} else {
+				x, y := trades[a], trades[b]
+				trades[a], trades[b] = y, x
+			}
+		}
+	}
+
 	page := IndexPageData { "Index", trades }
 	t, err := template.New("index.html").Funcs(template.FuncMap {
 		"Abs" : func (a int) int {
