@@ -1,31 +1,18 @@
 package main
 
-import ("database/sql"
-		"log"
+import ("log"
 		"cppio"
 		"sync"
 		"fmt"
 		"time"
+		"./goldmine"
+		"./db"
+		"./handlers"
 		"encoding/json"
 		"net/http"
-		"html/template"
 		_ "github.com/mattn/go-sqlite3"
 		"gopkg.in/tomb.v2"
 		"github.com/paked/configure")
-
-type Trade struct {
-	Account string
-	Security string
-	Price float64
-	Quantity int // Positive value - buy, negative - sell
-	Volume float64
-	VolumeCurrency string
-	StrategyId string
-	SignalId string
-	Comment string
-	Timestamp uint64
-	Useconds uint32
-}
 
 type JsonTradeFields struct {
 	Account string `json:"account"`
@@ -45,7 +32,7 @@ type JsonTrade struct {
 	Trade JsonTradeFields `json:"trade"`
 }
 
-func convertTrade(t JsonTradeFields) (Trade, error) {
+func convertTrade(t JsonTradeFields) (goldmine.Trade, error) {
 	// If 'operation' is 'sell', then we should negate quantity field
 	var quantityFactor int
 	if t.Operation == "buy" {
@@ -53,13 +40,13 @@ func convertTrade(t JsonTradeFields) (Trade, error) {
 	} else if t.Operation == "sell" {
 		quantityFactor = -1
 	} else {
-		return Trade{}, fmt.Errorf("Error while parsing JSON: invalid 'operation' field: [%s]", t.Operation)
+		return goldmine.Trade{}, fmt.Errorf("Error while parsing JSON: invalid 'operation' field: [%s]", t.Operation)
 	}
 	ts, err := time.Parse("2006-01-02 15:04:05.000", t.ExecutionTime)
 	if err != nil {
-		return Trade {}, err
+		return goldmine.Trade {}, err
 	}
-	return Trade {Account : t.Account,
+	return goldmine.Trade {Account : t.Account,
 		Security : t.Security,
 		Price : t.Price,
 		Quantity : t.Quantity * quantityFactor,
@@ -72,55 +59,7 @@ func convertTrade(t JsonTradeFields) (Trade, error) {
 		Useconds : uint32(ts.Nanosecond() / 1000)}, nil
 }
 
-func insertTrade(db *sql.DB, trade Trade) error {
-	stmt, err := db.Prepare("INSERT INTO trades(account, security, price, quantity, volume, volumeCurrency, strategyId, signalId, comment, timestamp, useconds) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-	if err != nil {
-		return err
-	}
-
-	_, err = stmt.Exec(trade.Account, trade.Security, trade.Price, trade.Quantity, trade.Volume, trade.VolumeCurrency, trade.StrategyId, trade.SignalId,
-		trade.Comment, trade.Timestamp, trade.Useconds)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func createSchema(db *sql.DB) error {
-	_, err := db.Exec("CREATE TABLE IF NOT EXISTS trades(id INTEGER PRIMARY KEY, account TEXT, security TEXT, price REAL, quantity INTEGER, volume REAL, volumeCurrency TEXT, strategyId TEXT, signalId TEXT, comment TEXT, timestamp INTEGER, useconds INTEGER)")
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func writeDatabase(dbFilename string, trades chan Trade, t *tomb.Tomb, wg sync.WaitGroup) {
-	defer wg.Done()
-	db, err := sql.Open("sqlite3", dbFilename)
-	if err != nil {
-		log.Fatalf("Unable to open database: %s", err.Error())
-	}
-	defer db.Close()
-	err = createSchema(db)
-	if err != nil {
-		log.Fatalf("Unable to ping database: %s", err.Error())
-	}
-	for {
-		select {
-		case trade := <-trades:
-			err = insertTrade(db, trade)
-			if err != nil {
-				log.Print(err.Error())
-			}
-		case <-t.Dying():
-			return
-		}
-	}
-}
-
-func handleClient(client cppio.IoLine, trades chan Trade, t *tomb.Tomb, wg sync.WaitGroup) {
+func handleClient(client cppio.IoLine, trades chan goldmine.Trade, t *tomb.Tomb, wg sync.WaitGroup) {
 	defer client.Close()
 
 	wg.Add(1)
@@ -165,7 +104,7 @@ func handleClient(client cppio.IoLine, trades chan Trade, t *tomb.Tomb, wg sync.
 	}
 }
 
-func listenClients(endpoint string, trades chan Trade, t *tomb.Tomb, wg sync.WaitGroup) error {
+func listenClients(endpoint string, trades chan goldmine.Trade, t *tomb.Tomb, wg sync.WaitGroup) error {
 	defer wg.Done()
 	server, err := cppio.CreateServer(endpoint)
 	if err != nil {
@@ -185,78 +124,10 @@ func listenClients(endpoint string, trades chan Trade, t *tomb.Tomb, wg sync.Wai
 	}
 }
 
-func readAllTrades(dbFilename string) []Trade {
-	db, err := sql.Open("sqlite3", dbFilename)
-	if err != nil {
-		log.Fatalf("Unable to open database: %s", err.Error())
-	}
-
-	var trades []Trade
-	rows, err := db.Query("SELECT account, security, price, quantity, volume, volumeCurrency, strategyId, signalId, comment, timestamp, useconds FROM trades")
-	if err != nil {
-		log.Printf("Unable to open DB: %s", err.Error())
-		return trades
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var t Trade
-		err = rows.Scan(&t.Account, &t.Security, &t.Price, &t.Quantity, &t.Volume, &t.VolumeCurrency, &t.StrategyId, &t.SignalId, &t.Comment, &t.Timestamp, &t.Useconds)
-		if err != nil {
-			log.Printf("Unable to get trades: %s", err.Error())
-			return trades
-		}
-		trades = append(trades, t)
-	}
-
-	return trades
-}
-
-type IndexHandler struct {
-	dbFilename string
-}
-
-func (handler IndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	type IndexPageData struct {
-		Title string
-		Trades []Trade
-	}
-	trades := readAllTrades(handler.dbFilename)
-	if len(trades) >= 2 {
-		for i := 0; i < len(trades) / 2; i++ {
-			a, b := i, len(trades) - i - 1
-			if a == b {
-				break
-			} else {
-				x, y := trades[a], trades[b]
-				trades[a], trades[b] = y, x
-			}
-		}
-	}
-
-	page := IndexPageData { "Index", trades }
-	t, err := template.New("index.html").Funcs(template.FuncMap {
-		"Abs" : func (a int) int {
-		if a < 0 {
-			return -a
-		} else {
-			return a
-		}},
-		"ConvertTime" : func (t uint64, us uint32) string {
-			return time.Unix(int64(t), int64(us) * 1000).Format("2006-01-02 15:04:05.000")
-		}}).ParseFiles("content/templates/index.html")
-	if err != nil {
-		log.Printf("Unable to parse template: %s", err.Error())
-		return
-	}
-	err = t.Execute(w, page)
-	if err != nil {
-		log.Printf("Unable to execute template: %s", err.Error())
-	}
-}
 
 func httpServer(dbFilename string, t *tomb.Tomb) {
-	index := IndexHandler {dbFilename}
-	http.Handle("/", index)
+	trades := handlers.TradesHandler {dbFilename}
+	http.Handle("/trades/", trades)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("content/static"))))
 	http.ListenAndServe(":5541", nil)
 }
@@ -270,12 +141,12 @@ func main () {
 	conf.Use(configure.NewJSONFromFile("goldmine-stats-config.json"))
 	conf.Parse()
 
-	trades := make(chan Trade)
+	trades := make(chan goldmine.Trade)
 	var wg sync.WaitGroup
 	var theTomb tomb.Tomb
 
 	wg.Add(2)
-	go writeDatabase(*dbFilename, trades, &theTomb, wg)
+	go db.WriteDatabase(*dbFilename, trades, &theTomb, wg)
 	go listenClients(*endpoint, trades, &theTomb, wg)
 	go httpServer(*dbFilename, &theTomb)
 
