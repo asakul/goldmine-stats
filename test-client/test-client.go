@@ -10,6 +10,8 @@ type JsonTradeFields struct {
 	Security string `json:"security"`
 	Price float64 `json:"price"`
 	Quantity int `json:"quantity"`
+	Volume float64 `json:"volume"`
+	VolumeCurrency string `json:"volume-currency"`
 	Operation string `json:"operation"`
 	ExecutionTime string `json:"execution-time"`
 	Strategy string `json:"strategy"`
@@ -27,6 +29,8 @@ func main() {
 		Security : "bar",
 		Price : 10,
 		Quantity : 2,
+		Volume : 10000,
+		VolumeCurrency : "RUB",
 		Operation : "buy",
 		ExecutionTime : "2000-01-01 12:00:00.333",
 		Strategy : "foobar",

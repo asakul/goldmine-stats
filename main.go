@@ -16,6 +16,8 @@ type Trade struct {
 	security string
 	price float64
 	quantity int // Positive value - buy, negative - sell
+	volume float64
+	volumeCurrency string
 	strategyId string
 	signalId string
 	comment string
@@ -28,6 +30,8 @@ type JsonTradeFields struct {
 	Security string `json:"security"`
 	Price float64 `json:"price"`
 	Quantity int `json:"quantity"`
+	Volume float64 `json:"volume"`
+	VolumeCurrency string `json:"volume-currency"`
 	Operation string `json:"operation"`
 	ExecutionTime string `json:"execution-time"`
 	Strategy string `json:"strategy"`
@@ -57,6 +61,8 @@ func convertTrade(t JsonTradeFields) (Trade, error) {
 		security : t.Security,
 		price : t.Price,
 		quantity : t.Quantity * quantityFactor,
+		volume : t.Volume,
+		volumeCurrency : t.VolumeCurrency,
 		strategyId : t.Strategy,
 		signalId : t.Signal_id,
 		comment : t.Order_comment,
@@ -65,12 +71,12 @@ func convertTrade(t JsonTradeFields) (Trade, error) {
 }
 
 func insertTrade(db *sql.DB, trade Trade) error {
-	stmt, err := db.Prepare("INSERT INTO trades(account, security, price, quantity, strategyId, signalId, comment, timestamp, useconds) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)")
+	stmt, err := db.Prepare("INSERT INTO trades(account, security, price, quantity, volume, volumeCurrency, strategyId, signalId, comment, timestamp, useconds) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
 
-	_, err = stmt.Exec(trade.account, trade.security, trade.price, trade.quantity, trade.strategyId, trade.signalId,
+	_, err = stmt.Exec(trade.account, trade.security, trade.price, trade.quantity, trade.volume, trade.volumeCurrency, trade.strategyId, trade.signalId,
 		trade.comment, trade.timestamp, trade.useconds)
 
 	if err != nil {
@@ -81,7 +87,7 @@ func insertTrade(db *sql.DB, trade Trade) error {
 }
 
 func createSchema(db *sql.DB) error {
-	_, err := db.Exec("CREATE TABLE IF NOT EXISTS trades(id INTEGER PRIMARY KEY, account TEXT, security TEXT, price REAL, quantity INTEGER, strategyId TEXT, signalId TEXT, comment TEXT, timestamp INTEGER, useconds INTEGER)")
+	_, err := db.Exec("CREATE TABLE IF NOT EXISTS trades(id INTEGER PRIMARY KEY, account TEXT, security TEXT, price REAL, quantity INTEGER, volume REAL, volumeCurrency TEXT, strategyId TEXT, signalId TEXT, comment TEXT, timestamp INTEGER, useconds INTEGER)")
 	if err != nil {
 		return err
 	}
