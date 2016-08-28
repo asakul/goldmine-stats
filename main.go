@@ -76,9 +76,13 @@ func handleClient(client cppio.IoLine, trades chan goldmine.Trade, t *tomb.Tomb,
 		}
 		msg := cppio.CreateMessage()
 		err := proto.Read(msg)
-		if err != nil && !err.Timeout() {
-			log.Printf("Error: %s", err.Error())
-			break
+		if err != nil {
+			if !err.Timeout() {
+				log.Printf("Error: %s", err.Error())
+				break
+			} else if err.Timeout() {
+				continue
+			}
 		}
 		if msg.Size() >= 1 {
 			log.Printf("Incoming json: %s", msg.GetFrame(0))
@@ -92,7 +96,7 @@ func handleClient(client cppio.IoLine, trades chan goldmine.Trade, t *tomb.Tomb,
 			log.Printf("Trade: sec: %s/account: %s", trade.Trade.Security, trade.Trade.Account)
 			parsedTrade, err := convertTrade(trade.Trade)
 			if err != nil {
-				log.Printf("%s", err.Error())
+				log.Printf("Trade parsing error: %s", err.Error())
 				continue
 			}
 			trades <- parsedTrade
