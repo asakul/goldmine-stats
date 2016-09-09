@@ -98,12 +98,12 @@ func aggregateClosedTrades(trades []goldmine.Trade) []ClosedTrade {
 			balanceEntry.trade.Security = trade.Security
 			balanceEntry.trade.EntryTime = time.Unix(int64(trade.Timestamp), int64(trade.Useconds))
 			balanceEntry.trade.ProfitCurrency = trade.VolumeCurrency
-			balanceEntry.trade.Profit = trade.Volume * sign(trade.Quantity)
+			balanceEntry.trade.Profit = -trade.Volume * sign(trade.Quantity)
 			balanceEntry.trade.Strategy = trade.StrategyId
 			balance[key] = balanceEntry
 		} else {
 			balanceEntry.balance += trade.Quantity
-			balanceEntry.trade.Profit += trade.Volume * sign(trade.Quantity)
+			balanceEntry.trade.Profit += -trade.Volume * sign(trade.Quantity)
 
 			if balanceEntry.balance == 0 {
 				balanceEntry.trade.ExitTime = time.Unix(int64(trade.Timestamp), int64(trade.Useconds))
