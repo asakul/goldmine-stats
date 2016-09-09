@@ -79,9 +79,15 @@ func WriteDatabase(db *DbHandle, trades chan goldmine.Trade, t *tomb.Tomb, wg sy
 	}
 }
 
-func ReadAllTrades(db *DbHandle) []goldmine.Trade {
+func ReadAllTrades(db *DbHandle, account string) []goldmine.Trade {
 	var trades []goldmine.Trade
-	rows, err := db.Db.Query("SELECT id, account, security, price, quantity, volume, volumeCurrency, strategyId, signalId, comment, timestamp, useconds FROM trades")
+	var rows *sql.Rows
+	var err error
+	if account == "" {
+		rows, err = db.Db.Query("SELECT id, account, security, price, quantity, volume, volumeCurrency, strategyId, signalId, comment, timestamp, useconds FROM trades")
+	} else {
+		rows, err = db.Db.Query("SELECT id, account, security, price, quantity, volume, volumeCurrency, strategyId, signalId, comment, timestamp, useconds FROM trades WHERE account = ?", account)
+	}
 	if err != nil {
 		log.Printf("Unable to open DB: %s", err.Error())
 		return trades
@@ -89,7 +95,7 @@ func ReadAllTrades(db *DbHandle) []goldmine.Trade {
 	defer rows.Close()
 	for rows.Next() {
 		var t goldmine.Trade
-		err = rows.Scan(&t.TradeId, &t.Account, &t.Security, &t.Price, &t.Quantity, &t.Volume, &t.VolumeCurrency, &t.StrategyId, &t.SignalId, &t.Comment, &t.Timestamp, &t.Useconds)
+		err := rows.Scan(&t.TradeId, &t.Account, &t.Security, &t.Price, &t.Quantity, &t.Volume, &t.VolumeCurrency, &t.StrategyId, &t.SignalId, &t.Comment, &t.Timestamp, &t.Useconds)
 		if err != nil {
 			log.Printf("Unable to get trades: %s", err.Error())
 			return trades
@@ -99,3 +105,24 @@ func ReadAllTrades(db *DbHandle) []goldmine.Trade {
 
 	return trades
 }
+
+func GetAllAccounts(db *DbHandle) ([]string, error) {
+	var result []string
+	rows, err := db.Db.Query("SELECT account FROM trades GROUP BY account")
+	if err != nil {
+		log.Printf("Unable to obtain all accounts: %s", err.Error())
+		return result, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var account string
+		err = rows.Scan(&account)
+		if err != nil {
+			log.Printf("Unable to obtain all accounts: %s", err.Error())
+			return result, err
+		}
+		result = append(result, account)
+	}
+	return result, nil
+}
+

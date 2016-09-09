@@ -9,6 +9,19 @@
 	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
     <script src="/static/js/bootstrap.min.js"></script>
 	{{ template "navbar" . }}
+	<div class="dropdown">
+		<button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">
+			{{ if eq .CurrentAccount "" }} Filter by account...
+			{{ else }} Account: {{ .CurrentAccount }}
+			{{ end }}
+			<span class="caret"></span></button>
+		<ul class="dropdown-menu">
+			{{ range $index, $account := .Accounts }}
+			<li><a href="/closed_trades/?account={{$account}}">{{$account}}</a></li>
+			{{ end }} 
+			<li><a href="/closed_trades/">Reset filter</a></li>
+		</ul>
+	</div>
 	<table class="table table-condensed">
 		<tr>
 			<td></td>

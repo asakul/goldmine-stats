@@ -19,7 +19,7 @@ func (handler TradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Title string
 		Trades []goldmine.Trade
 	}
-	trades := db.ReadAllTrades(handler.Db)
+	trades := db.ReadAllTrades(handler.Db, "")
 	if len(trades) >= 2 {
 		for i := 0; i < len(trades) / 2; i++ {
 			a, b := i, len(trades) - i - 1
@@ -130,10 +130,19 @@ func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 	type ClosedTradesPageData struct {
 		Title string
 		Trades []ClosedTrade
+		Accounts []string
+		CurrentAccount string
 	}
-	trades := aggregateClosedTrades(db.ReadAllTrades(handler.Db))
+	accounts, err := db.GetAllAccounts(handler.Db)
+	if err != nil {
+		log.Printf("Unable to obtain accounts: %s", err.Error())
+		return
+	}
+	currentAccount := r.FormValue("account")
 
-	page := ClosedTradesPageData { "Closed trades", trades }
+	trades := aggregateClosedTrades(db.ReadAllTrades(handler.Db, currentAccount))
+
+	page := ClosedTradesPageData { "Closed trades", trades, accounts, currentAccount }
 	t, err := template.New("closed_trades.html").Funcs(template.FuncMap {
 		"Abs" : func (a int) int {
 		if a < 0 {
