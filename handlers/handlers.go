@@ -64,6 +64,7 @@ type ClosedTrade struct {
 	Profit float64
 	ProfitCurrency string
 	Strategy string
+	Direction string
 }
 
 func sign(value int) float64 {
@@ -101,6 +102,11 @@ func aggregateClosedTrades(trades []goldmine.Trade) []ClosedTrade {
 			balanceEntry.trade.ProfitCurrency = trade.VolumeCurrency
 			balanceEntry.trade.Profit = -trade.Volume * sign(trade.Quantity)
 			balanceEntry.trade.Strategy = trade.StrategyId
+			if trade.Quantity > 0 {
+				balanceEntry.trade.Direction = "long"
+			} else {
+				balanceEntry.trade.Direction = "short"
+			}
 			balance[key] = balanceEntry
 		} else {
 			balanceEntry.balance += trade.Quantity

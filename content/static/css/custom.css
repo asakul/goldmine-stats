@@ -1,0 +1,8 @@
+
+table .img-responsive {
+    width: 100%;
+}
+
+.table > tbody > tr > td {
+     vertical-align: middle;
+}
