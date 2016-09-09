@@ -84,9 +84,9 @@ func ReadAllTrades(db *DbHandle, account string) []goldmine.Trade {
 	var rows *sql.Rows
 	var err error
 	if account == "" {
-		rows, err = db.Db.Query("SELECT id, account, security, price, quantity, volume, volumeCurrency, strategyId, signalId, comment, timestamp, useconds FROM trades")
+		rows, err = db.Db.Query("SELECT id, account, security, price, quantity, volume, volumeCurrency, strategyId, signalId, comment, timestamp, useconds FROM trades ORDER BY timestamp")
 	} else {
-		rows, err = db.Db.Query("SELECT id, account, security, price, quantity, volume, volumeCurrency, strategyId, signalId, comment, timestamp, useconds FROM trades WHERE account = ?", account)
+		rows, err = db.Db.Query("SELECT id, account, security, price, quantity, volume, volumeCurrency, strategyId, signalId, comment, timestamp, useconds FROM trades WHERE account = ? ORDER BY timestamp", account)
 	}
 	if err != nil {
 		log.Printf("Unable to open DB: %s", err.Error())
