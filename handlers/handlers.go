@@ -78,7 +78,22 @@ func sign(value int) float64 {
 	}
 }
 
-func aggregateClosedTrades(trades []goldmine.Trade) []ClosedTrade {
+type DataPoint struct {
+	Year int
+	Month int
+	Day int
+	Hour int
+	Minute int
+	Second int
+	Value float64
+}
+type ProfitSeries struct {
+	Name string
+	Points []DataPoint
+	current float64
+}
+
+func aggregateClosedTrades(trades []goldmine.Trade) ([]ClosedTrade, []ProfitSeries) {
 	var result []ClosedTrade
 
 	type BalanceKey struct {
@@ -91,6 +106,8 @@ func aggregateClosedTrades(trades []goldmine.Trade) []ClosedTrade {
 		trade ClosedTrade
 	}
 	balance := make(map[BalanceKey]BalanceEntry)
+
+	cumulativePnL := make(map[string]ProfitSeries)
 
 	for _, trade := range trades {
 		key := BalanceKey { trade.Account, trade.Security, trade.StrategyId }
@@ -118,13 +135,25 @@ func aggregateClosedTrades(trades []goldmine.Trade) []ClosedTrade {
 			if balanceEntry.balance == 0 {
 				balanceEntry.trade.ExitTime = time.Unix(int64(trade.Timestamp), int64(trade.Useconds))
 				result = append(result, balanceEntry.trade)
+
+				pnl := cumulativePnL[balanceEntry.trade.Account]
+				pnl.Name = balanceEntry.trade.Account
+				pnl.current += balanceEntry.trade.Profit
+				t := balanceEntry.trade.ExitTime
+				pnl.Points = append(pnl.Points, DataPoint{t.Year(), int(t.Month()) - 1, t.Day(), t.Hour(), t.Minute(), t.Second(), pnl.current})
+				cumulativePnL[balanceEntry.trade.Account] = pnl
 			}
 			balance[key] = balanceEntry
 		}
 	}
+	profits := make([]ProfitSeries, 0, len(cumulativePnL))
+	for _, value := range cumulativePnL {
+		profits = append(profits, value)
+	}
 
-	return result
+	return result, profits
 }
+
 
 func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	type ClosedTradesPageData struct {
@@ -132,6 +161,7 @@ func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		Trades []ClosedTrade
 		Accounts []string
 		CurrentAccount string
+		CumulativeProfits []ProfitSeries
 	}
 	accounts, err := db.GetAllAccounts(handler.Db)
 	if err != nil {
@@ -140,9 +170,9 @@ func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 	}
 	currentAccount := r.FormValue("account")
 
-	trades := aggregateClosedTrades(db.ReadAllTrades(handler.Db, currentAccount))
+	trades, cumulativePnL := aggregateClosedTrades(db.ReadAllTrades(handler.Db, currentAccount))
 
-	page := ClosedTradesPageData { "Closed trades", trades, accounts, currentAccount }
+	page := ClosedTradesPageData { "Closed trades", trades, accounts, currentAccount, cumulativePnL }
 	t, err := template.New("closed_trades.html").Funcs(template.FuncMap {
 		"Abs" : func (a int) int {
 		if a < 0 {

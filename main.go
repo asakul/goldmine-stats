@@ -65,6 +65,7 @@ func handleClient(client cppio.IoLine, trades chan goldmine.Trade, t *tomb.Tomb,
 
 	wg.Add(1)
 	defer wg.Done()
+	log.Printf("New client connected")
 
 	client.SetOptionInt(cppio.OReceiveTimeout, 500)
 
