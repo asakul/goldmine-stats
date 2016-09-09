@@ -2,6 +2,7 @@ package main
 
 import ("log"
 		"cppio"
+		"os"
 		"sync"
 		"fmt"
 		"time"
@@ -128,12 +129,12 @@ func listenClients(endpoint string, trades chan goldmine.Trade, t *tomb.Tomb, wg
 	}
 }
 
-func httpServer(dbFilename string, t *tomb.Tomb) {
+func httpServer(dbFilename string, t *tomb.Tomb, contentDir string) {
 	trades := handlers.TradesHandler {dbFilename}
 	http.Handle("/delete_trade", handlers.DeleteTradeHandler {dbFilename})
 	http.Handle("/trades/", trades)
 	http.Handle("/closed_trades/", handlers.ClosedTradesHandler {dbFilename})
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("content/static"))))
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(contentDir + "/content/static"))))
 	log.Printf("HTTP: Listening on 5541")
 	http.ListenAndServe(":5541", nil)
 }
@@ -142,9 +143,12 @@ func main () {
 	conf := configure.New()
 	dbFilename := conf.String("db-filename", "trades.db", "Where database will be stored")
 	endpoint := conf.String("endpoint", "", "What endpoint to listen")
+	contentDir := conf.String("content-dir", ".", "Directory where static content and templates are stored")
 	conf.Use(configure.NewEnvironment())
 	conf.Use(configure.NewFlag())
-	conf.Use(configure.NewJSONFromFile("goldmine-stats-config.json"))
+	if _, err := os.Stat("/etc/goldmine-stats-config.json"); err == nil {
+		conf.Use(configure.NewJSONFromFile("/etc/goldmine-stats-config.json"))
+	}
 	conf.Parse()
 
 	trades := make(chan goldmine.Trade)
@@ -154,7 +158,7 @@ func main () {
 	wg.Add(2)
 	go db.WriteDatabase(*dbFilename, trades, &theTomb, wg)
 	go listenClients(*endpoint, trades, &theTomb, wg)
-	go httpServer(*dbFilename, &theTomb)
+	go httpServer(*dbFilename, &theTomb, *contentDir)
 
 	wg.Wait()
 }
