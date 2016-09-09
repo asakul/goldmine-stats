@@ -8,6 +8,19 @@ import ("database/sql"
 		"gopkg.in/tomb.v2"
 	)
 
+type DbHandle struct {
+	Db *sql.DB
+}
+
+func Open(dbFilename string) (*DbHandle, error) {
+	db, err := sql.Open("sqlite3", dbFilename)
+	return &DbHandle {db}, err
+}
+
+func Close(handle *DbHandle) {
+	handle.Db.Close()
+}
+
 func insertTrade(db *sql.DB, trade goldmine.Trade) error {
 	stmt, err := db.Prepare("INSERT INTO trades(account, security, price, quantity, volume, volumeCurrency, strategyId, signalId, comment, timestamp, useconds) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
@@ -24,14 +37,8 @@ func insertTrade(db *sql.DB, trade goldmine.Trade) error {
 	return nil
 }
 
-func DeleteTrade(dbFilename string, id int) error {
-	db, err := sql.Open("sqlite3", dbFilename)
-	if err != nil {
-		log.Fatalf("Unable to open database: %s", err.Error())
-	}
-	defer db.Close()
-
-	stmt, err := db.Prepare("DELETE FROM trades WHERE id = ?")
+func DeleteTrade(db *DbHandle, id int) error {
+	stmt, err := db.Db.Prepare("DELETE FROM trades WHERE id = ?")
 	if err != nil {
 		return err
 	}
@@ -53,21 +60,16 @@ func createSchema(db *sql.DB) error {
 	return nil
 }
 
-func WriteDatabase(dbFilename string, trades chan goldmine.Trade, t *tomb.Tomb, wg sync.WaitGroup) {
+func WriteDatabase(db *DbHandle, trades chan goldmine.Trade, t *tomb.Tomb, wg sync.WaitGroup) {
 	defer wg.Done()
-	db, err := sql.Open("sqlite3", dbFilename)
-	if err != nil {
-		log.Fatalf("Unable to open database: %s", err.Error())
-	}
-	defer db.Close()
-	err = createSchema(db)
+	err := createSchema(db.Db)
 	if err != nil {
 		log.Fatalf("Unable to ping database: %s", err.Error())
 	}
 	for {
 		select {
 		case trade := <-trades:
-			err = insertTrade(db, trade)
+			err = insertTrade(db.Db, trade)
 			if err != nil {
 				log.Print(err.Error())
 			}
@@ -77,15 +79,9 @@ func WriteDatabase(dbFilename string, trades chan goldmine.Trade, t *tomb.Tomb, 
 	}
 }
 
-func ReadAllTrades(dbFilename string) []goldmine.Trade {
-	db, err := sql.Open("sqlite3", dbFilename)
-	if err != nil {
-		log.Fatalf("Unable to open database: %s", err.Error())
-	}
-	defer db.Close()
-
+func ReadAllTrades(db *DbHandle) []goldmine.Trade {
 	var trades []goldmine.Trade
-	rows, err := db.Query("SELECT id, account, security, price, quantity, volume, volumeCurrency, strategyId, signalId, comment, timestamp, useconds FROM trades")
+	rows, err := db.Db.Query("SELECT id, account, security, price, quantity, volume, volumeCurrency, strategyId, signalId, comment, timestamp, useconds FROM trades")
 	if err != nil {
 		log.Printf("Unable to open DB: %s", err.Error())
 		return trades

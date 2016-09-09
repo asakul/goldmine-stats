@@ -10,7 +10,7 @@ import ("../db"
 		"net/http")
 
 type TradesHandler struct {
-	DbFilename string
+	Db *db.DbHandle
 }
 
 func (handler TradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -18,7 +18,7 @@ func (handler TradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Title string
 		Trades []goldmine.Trade
 	}
-	trades := db.ReadAllTrades(handler.DbFilename)
+	trades := db.ReadAllTrades(handler.Db)
 	if len(trades) >= 2 {
 		for i := 0; i < len(trades) / 2; i++ {
 			a, b := i, len(trades) - i - 1
@@ -53,7 +53,7 @@ func (handler TradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type ClosedTradesHandler struct {
-	DbFilename string
+	Db *db.DbHandle
 }
 
 type ClosedTrade struct {
@@ -122,7 +122,7 @@ func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		Title string
 		Trades []ClosedTrade
 	}
-	trades := aggregateClosedTrades(db.ReadAllTrades(handler.DbFilename))
+	trades := aggregateClosedTrades(db.ReadAllTrades(handler.Db))
 
 	page := ClosedTradesPageData { "Closed trades", trades }
 	t, err := template.New("closed_trades.html").Funcs(template.FuncMap {
@@ -146,7 +146,7 @@ func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 }
 
 type DeleteTradeHandler struct {
-	DbFilename string
+	Db *db.DbHandle
 }
 
 func (handler DeleteTradeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -155,6 +155,6 @@ func (handler DeleteTradeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(403)
 		w.Write([]byte("Error"))
 	}
-	db.DeleteTrade(handler.DbFilename, id)
+	db.DeleteTrade(handler.Db, id)
 	http.Redirect(w, r, "/trades", 302)
 }

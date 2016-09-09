@@ -129,11 +129,10 @@ func listenClients(endpoint string, trades chan goldmine.Trade, t *tomb.Tomb, wg
 	}
 }
 
-func httpServer(dbFilename string, t *tomb.Tomb, contentDir string) {
-	trades := handlers.TradesHandler {dbFilename}
-	http.Handle("/delete_trade", handlers.DeleteTradeHandler {dbFilename})
-	http.Handle("/trades/", trades)
-	http.Handle("/closed_trades/", handlers.ClosedTradesHandler {dbFilename})
+func httpServer(dbHandle *db.DbHandle, t *tomb.Tomb, contentDir string) {
+	http.Handle("/delete_trade", handlers.DeleteTradeHandler {dbHandle})
+	http.Handle("/trades/", handlers.TradesHandler {dbHandle})
+	http.Handle("/closed_trades/", handlers.ClosedTradesHandler {dbHandle})
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(contentDir + "/content/static"))))
 	log.Printf("HTTP: Listening on 5541")
 	http.ListenAndServe(":5541", nil)
@@ -155,10 +154,15 @@ func main () {
 	var wg sync.WaitGroup
 	var theTomb tomb.Tomb
 
+	dbHandle, err := db.Open(*dbFilename)
+	if err != nil {
+		log.Printf("Error: unable to open database: %s", err)
+	}
+	defer db.Close(dbHandle)
 	wg.Add(2)
-	go db.WriteDatabase(*dbFilename, trades, &theTomb, wg)
+	go db.WriteDatabase(dbHandle, trades, &theTomb, wg)
 	go listenClients(*endpoint, trades, &theTomb, wg)
-	go httpServer(*dbFilename, &theTomb, *contentDir)
+	go httpServer(dbHandle, &theTomb, *contentDir)
 
 	wg.Wait()
 }
