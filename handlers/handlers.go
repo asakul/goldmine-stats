@@ -6,6 +6,7 @@ import ("../db"
 		"html/template"
 		"time"
 		"log"
+		"strconv"
 		"net/http")
 
 type TradesHandler struct {
@@ -142,4 +143,18 @@ func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		log.Printf("Unable to execute template: %s", err.Error())
 	}
+}
+
+type DeleteTradeHandler struct {
+	DbFilename string
+}
+
+func (handler DeleteTradeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.FormValue("id"))
+	if err != nil {
+		w.WriteHeader(403)
+		w.Write([]byte("Error"))
+	}
+	db.DeleteTrade(handler.DbFilename, id)
+	http.Redirect(w, r, "/trades", 302)
 }

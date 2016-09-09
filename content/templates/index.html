@@ -18,6 +18,7 @@
 			<td>Volume</td>
 			<td>Strategy ID</td>
 			<td>Signal ID</td>
+			<td></td>
 		</tr>
 	{{range $index, $element := .Trades}}
 		<tr>
@@ -30,6 +31,7 @@
 			<td>{{printf "%.2f" .Volume}} {{.VolumeCurrency}}</td>
 			<td>{{.StrategyId}}</td>
 			<td>{{.SignalId}}</td>
+			<td><button type="button" class="btn btn-danger" onclick="if(window.confirm('Confirm deletion')) { document.location.href = '/delete_trade?id={{.TradeId}}'}; return false;">Delete</button></td>
 		</tr>
 	{{end}}
 	</table>

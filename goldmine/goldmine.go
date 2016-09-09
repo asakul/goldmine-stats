@@ -2,6 +2,7 @@
 package goldmine
 
 type Trade struct {
+	TradeId int
 	Account string
 	Security string
 	Price float64

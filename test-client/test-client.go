@@ -27,6 +27,7 @@ type JsonTrade struct {
 }
 
 type Options struct {
+	Endpoint string `short:"e" long:"endpoint"`
 	Account string `short:"a" long:"account"`
 	Security string `short:"s" long:"security"`
 	Price float64 `short:"p" long:"price"`
@@ -76,7 +77,7 @@ func main() {
 		panic(jsonErr)
 	}
 
-	client, err := cppio.CreateClient("tcp://127.0.0.1:5540")
+	client, err := cppio.CreateClient(options.Endpoint)
 	if err != nil {
 		panic(err)
 	}
