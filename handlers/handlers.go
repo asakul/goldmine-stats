@@ -11,6 +11,7 @@ import ("../db"
 
 type TradesHandler struct {
 	Db *db.DbHandle
+	ContentDir string
 }
 
 func (handler TradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -41,7 +42,7 @@ func (handler TradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}},
 		"ConvertTime" : func (t uint64, us uint32) string {
 			return time.Unix(int64(t), int64(us) * 1000).Format("2006-01-02 15:04:05.000")
-		}}).ParseFiles("content/templates/index.html")
+		}}).ParseFiles(handler.ContentDir + "/content/templates/index.html")
 	if err != nil {
 		log.Printf("Unable to parse template: %s", err.Error())
 		return
@@ -54,6 +55,7 @@ func (handler TradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type ClosedTradesHandler struct {
 	Db *db.DbHandle
+	ContentDir string
 }
 
 type ClosedTrade struct {
@@ -140,7 +142,7 @@ func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		}},
 		"PrintTime" : func (t time.Time) string {
 			return t.Format("2006-01-02 15:04:05.000")
-		}}).ParseFiles("content/templates/closed_trades.html")
+		}}).ParseFiles(handler.ContentDir + "/content/templates/closed_trades.html")
 	if err != nil {
 		log.Printf("Unable to parse template: %s", err.Error())
 		return
@@ -153,6 +155,7 @@ func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 
 type DeleteTradeHandler struct {
 	Db *db.DbHandle
+	ContentDir string
 }
 
 func (handler DeleteTradeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
