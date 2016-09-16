@@ -60,6 +60,12 @@ func convertTrade(t JsonTradeFields) (goldmine.Trade, error) {
 		Useconds : uint32(ts.Nanosecond() / 1000)}, nil
 }
 
+func sendHeartbeatResponse(client cppio.MessageProtocol) {
+	msg := cppio.CreateMessage()
+	msg.AddFrame([]byte(`{ "response" : "ok"}`))
+	client.Send(msg)
+}
+
 func handleClient(client cppio.IoLine, trades chan goldmine.Trade, t *tomb.Tomb, wg sync.WaitGroup) {
 	defer client.Close()
 
@@ -87,21 +93,39 @@ func handleClient(client cppio.IoLine, trades chan goldmine.Trade, t *tomb.Tomb,
 			}
 		}
 		if msg.Size() >= 1 {
-			log.Printf("Incoming json: %s", msg.GetFrame(0))
-			var trade JsonTrade
-			jsonErr := json.Unmarshal(msg.GetFrame(0), &trade)
+			//log.Printf("Incoming json: %s", msg.GetFrame(0))
+			var incomingMessage interface{}
+
+			jsonErr := json.Unmarshal(msg.GetFrame(0), &incomingMessage)
 			if jsonErr != nil {
 				log.Printf("Error: unable to parse incoming JSON: %s", jsonErr.Error())
 				continue
 			}
+			msgMap := incomingMessage.(map[string]interface{})
+			if cmd, ok := msgMap["command"]; ok {
+				switch cmd.(type) {
+				case string:
+					sendHeartbeatResponse(proto)
+				default:
+					log.Printf("Invalid cmd field")
 
-			log.Printf("Trade: sec: %s/account: %s", trade.Trade.Security, trade.Trade.Account)
-			parsedTrade, err := convertTrade(trade.Trade)
-			if err != nil {
-				log.Printf("Trade parsing error: %s", err.Error())
-				continue
+				}
+			} else if _, ok := msgMap["trade"]; ok {
+				var trade JsonTrade
+				err := json.Unmarshal(msg.GetFrame(0), &trade)
+				if err != nil {
+					log.Printf("Trade parsing error: %s", err.Error())
+					continue
+				}
+				log.Printf("Trade: sec: %s/account: %s", trade.Trade.Security, trade.Trade.Account)
+				parsedTrade, err := convertTrade(trade.Trade)
+				if err != nil {
+					log.Printf("Trade parsing error: %s", err.Error())
+					continue
+				}
+				trades <- parsedTrade
 			}
-			trades <- parsedTrade
+
 
 		} else {
 			log.Printf("Error: invalid message size: %d", msg.Size())
