@@ -1,7 +1,6 @@
 package main
 
 import ("log"
-		"cppio"
 		"os"
 		"sync"
 		"fmt"
@@ -11,6 +10,7 @@ import ("log"
 		"./handlers"
 		"encoding/json"
 		"net/http"
+		zmq "github.com/pebbe/zmq4"
 		_ "github.com/mattn/go-sqlite3"
 		"gopkg.in/tomb.v2"
 		"github.com/paked/configure")
@@ -60,73 +60,86 @@ func convertTrade(t JsonTradeFields) (goldmine.Trade, error) {
 		Useconds : uint32(ts.Nanosecond() / 1000)}, nil
 }
 
-func handleClient(client cppio.IoLine, trades chan goldmine.Trade, t *tomb.Tomb, wg sync.WaitGroup) {
-	defer client.Close()
+func sendHeartbeatResponse(peerId string, socket* zmq.Socket) {
+	msg := make([]string, 3)
+	msg[0] = peerId
+	msg[2] = "{ \"response\" : \"ok\"}"
+	socket.SendMessage(msg)
+}
 
+func handleClient(server* zmq.Socket, trades chan goldmine.Trade, t *tomb.Tomb, wg sync.WaitGroup) {
 	wg.Add(1)
 	defer wg.Done()
-	log.Printf("New client connected")
+	log.Printf("Waiting for next message")
 
-	client.SetOptionInt(cppio.OReceiveTimeout, 500)
+	msg, err := server.RecvMessage(0)
+	if err != nil {
+		return
+	}
+	log.Printf("Incoming message")
 
-	proto := cppio.CreateMessageProtocol(client)
-	defer proto.Close()
+	if len(msg) >= 3 {
+		log.Printf("Incoming json: %s", msg[2])
+		var incomingMessage interface{}
 
-	for {
-		if !t.Alive() {
+		jsonErr := json.Unmarshal([]byte(msg[2]), &incomingMessage)
+		if jsonErr != nil {
+			log.Printf("Error: unable to parse incoming JSON: %s", jsonErr.Error())
 			return
 		}
-		msg := cppio.CreateMessage()
-		err := proto.Read(msg)
-		if err != nil {
-			if !err.Timeout() {
-				log.Printf("Error: %s", err.Error())
-				break
-			} else if err.Timeout() {
-				continue
-			}
-		}
-		if msg.Size() >= 1 {
-			log.Printf("Incoming json: %s", msg.GetFrame(0))
-			var trade JsonTrade
-			jsonErr := json.Unmarshal(msg.GetFrame(0), &trade)
-			if jsonErr != nil {
-				log.Printf("Error: unable to parse incoming JSON: %s", jsonErr.Error())
-				continue
-			}
+		msgMap := incomingMessage.(map[string]interface{})
+		if cmd, ok := msgMap["command"]; ok {
+			switch cmd.(type) {
+			case string:
+				sendHeartbeatResponse(msg[0], server)
+			default:
+				log.Printf("Invalid cmd field")
 
+			}
+		} else if _, ok := msgMap["trade"]; ok {
+			log.Printf("Incoming trade")
+			var trade JsonTrade
+			err := json.Unmarshal([]byte(msg[2]), &trade)
+			if err != nil {
+				log.Printf("Trade parsing error: %s", err.Error())
+				return
+			}
 			log.Printf("Trade: sec: %s/account: %s", trade.Trade.Security, trade.Trade.Account)
 			parsedTrade, err := convertTrade(trade.Trade)
 			if err != nil {
 				log.Printf("Trade parsing error: %s", err.Error())
-				continue
+				return
 			}
+			log.Printf("Trade parsed")
 			trades <- parsedTrade
-
-		} else {
-			log.Printf("Error: invalid message size: %d", msg.Size())
-			continue
 		}
+
+	} else {
+		log.Printf("Error: invalid message size: %d", len(msg))
+		return
 	}
 }
 
 func listenClients(endpoint string, trades chan goldmine.Trade, t *tomb.Tomb, wg sync.WaitGroup) error {
 	defer wg.Done()
-	server, err := cppio.CreateServer(endpoint)
+	ctx, err := zmq.NewContext()
 	if err != nil {
 		return err
 	}
+	server, err := ctx.NewSocket(zmq.ROUTER)
+	if err != nil {
+		return err
+	}
+
 	log.Printf("Listening on %s", endpoint)
+	server.Bind(endpoint)
 
 	for {
 		if !t.Alive() {
 			return nil
 		}
 
-		client := server.WaitConnection(500)
-		if client.IsValid() {
-			go handleClient(client, trades, t, wg)
-		}
+		handleClient(server, trades, t, wg)
 	}
 }
 

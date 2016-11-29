@@ -4,7 +4,7 @@ package main
 import ("encoding/json"
 	"os"
 	"fmt"
-	"cppio"
+	zmq "github.com/pebbe/zmq4"
 	"github.com/jessevdk/go-flags"
 )
 
@@ -77,13 +77,24 @@ func main() {
 		panic(jsonErr)
 	}
 
-	client, err := cppio.CreateClient(options.Endpoint)
+	client, err := zmq.NewSocket(zmq.REQ)
 	if err != nil {
 		panic(err)
 	}
 
-	proto := cppio.CreateMessageProtocol(client)
-	msg := cppio.CreateMessage()
-	msg.AddFrame(b)
-	proto.Send(msg)
+	err = client.Connect(options.Endpoint)
+	defer client.Close()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Sending: %s", b)
+	msg := make([]string, 1)
+	msg[0] = string(b)
+	client.SendMessage(msg)
+
+	msg, err = client.RecvMessage(0)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Got response")
 }
