@@ -104,6 +104,7 @@ func aggregateClosedTrades(trades []goldmine.Trade) ([]ClosedTrade, []ProfitSeri
 	type BalanceEntry struct {
 		balance int
 		trade ClosedTrade
+		ks float64
 	}
 	balance := make(map[BalanceKey]BalanceEntry)
 
@@ -120,8 +121,9 @@ func aggregateClosedTrades(trades []goldmine.Trade) ([]ClosedTrade, []ProfitSeri
 			balanceEntry.trade.Security = trade.Security
 			balanceEntry.trade.EntryTime = time.Unix(int64(trade.Timestamp), int64(trade.Useconds))
 			balanceEntry.trade.ProfitCurrency = trade.VolumeCurrency
-			balanceEntry.trade.Profit = -trade.Volume * sign(trade.Quantity)
+			balanceEntry.trade.Profit = -trade.Price * sign(trade.Quantity)
 			balanceEntry.trade.Strategy = trade.StrategyId
+			balanceEntry.ks = trade.Volume / trade.Price
 			if trade.Quantity > 0 {
 				balanceEntry.trade.Direction = "long"
 			} else {
@@ -130,7 +132,9 @@ func aggregateClosedTrades(trades []goldmine.Trade) ([]ClosedTrade, []ProfitSeri
 			balance[key] = balanceEntry
 		} else {
 			balanceEntry.balance += trade.Quantity
-			balanceEntry.trade.Profit += -trade.Volume * sign(trade.Quantity)
+			balanceEntry.trade.Profit += -trade.Price * sign(trade.Quantity)
+			balanceEntry.ks += trade.Volume / trade.Price
+			balanceEntry.ks /= 2
 
 			if balanceEntry.balance == 0 {
 				balanceEntry.trade.ExitTime = time.Unix(int64(trade.Timestamp), int64(trade.Useconds))
@@ -138,7 +142,7 @@ func aggregateClosedTrades(trades []goldmine.Trade) ([]ClosedTrade, []ProfitSeri
 
 				pnl := cumulativePnL[balanceEntry.trade.Account]
 				pnl.Name = balanceEntry.trade.Account
-				pnl.current += balanceEntry.trade.Profit
+				pnl.current += balanceEntry.trade.Profit * balanceEntry.ks
 				t := balanceEntry.trade.ExitTime
 				pnl.Points = append(pnl.Points, DataPoint{t.Year(), int(t.Month()) - 1, t.Day(), t.Hour(), t.Minute(), t.Second(), pnl.current})
 				cumulativePnL[balanceEntry.trade.Account] = pnl
