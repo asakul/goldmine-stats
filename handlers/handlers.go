@@ -122,7 +122,7 @@ func aggregateClosedTrades(trades []goldmine.Trade) ([]ClosedTrade, []ProfitSeri
 			balanceEntry.trade.Security = trade.Security
 			balanceEntry.trade.EntryTime = time.Unix(int64(trade.Timestamp), int64(trade.Useconds))
 			balanceEntry.trade.ProfitCurrency = trade.VolumeCurrency
-			balanceEntry.trade.Profit = -trade.Price * sign(trade.Quantity)
+			balanceEntry.trade.Profit = -trade.Price * float64(trade.Quantity)
 			log.Printf("0profit = %f", balanceEntry.trade.Profit)
 			balanceEntry.trade.Strategy = trade.StrategyId
 			balanceEntry.ks = trade.Volume / (trade.Price * math.Abs(float64(trade.Quantity)))
@@ -136,7 +136,7 @@ func aggregateClosedTrades(trades []goldmine.Trade) ([]ClosedTrade, []ProfitSeri
 		} else {
 			log.Printf("1profit = %f", balanceEntry.trade.Profit)
 			balanceEntry.balance += trade.Quantity
-			balanceEntry.trade.Profit += -trade.Price * sign(trade.Quantity)
+			balanceEntry.trade.Profit += -trade.Price * float64(trade.Quantity)
 			balanceEntry.ks += trade.Volume / (trade.Price * math.Abs(float64(trade.Quantity)))
 			balanceEntry.ks /= 2
 			log.Printf("Ks = %f, profit = %f", balanceEntry.ks, balanceEntry.trade.Profit)
