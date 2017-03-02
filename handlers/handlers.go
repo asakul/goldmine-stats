@@ -4,7 +4,6 @@ package handlers
 import ("../db"
 		"../goldmine"
 		"html/template"
-		"math"
 		"time"
 		"log"
 		"strconv"
@@ -60,17 +59,6 @@ type ClosedTradesHandler struct {
 	ContentDir string
 }
 
-type ClosedTrade struct {
-	Account string
-	Security string
-	EntryTime time.Time
-	ExitTime time.Time
-	Profit float64
-	ProfitCurrency string
-	Strategy string
-	Direction string
-}
-
 func sign(value int) float64 {
 	if value >= 0 {
 		return 1
@@ -91,84 +79,34 @@ type DataPoint struct {
 type ProfitSeries struct {
 	Name string
 	Points []DataPoint
-	current float64
 }
 
-func aggregateClosedTrades(trades []goldmine.Trade) ([]ClosedTrade, []ProfitSeries) {
-	var result []ClosedTrade
-
-	type BalanceKey struct {
-		Account string
-		Security string
-		Strategy string
-	}
-	type BalanceEntry struct {
-		balance int
-		trade ClosedTrade
-		ks float64
-	}
-	balance := make(map[BalanceKey]BalanceEntry)
-
-	cumulativePnL := make(map[string]ProfitSeries)
-
-	for _, trade := range trades {
-		key := BalanceKey { trade.Account, trade.Security, trade.StrategyId }
-		balanceEntry := balance[key]
-		log.Printf("Trade: %s %d", trade.Security, trade.Quantity)
-		log.Printf("Balance: %d", balanceEntry.balance)
-		if balanceEntry.balance == 0 {
-			balanceEntry.balance = trade.Quantity
-			balanceEntry.trade.Account = trade.Account
-			balanceEntry.trade.Security = trade.Security
-			balanceEntry.trade.EntryTime = time.Unix(int64(trade.Timestamp), int64(trade.Useconds))
-			balanceEntry.trade.ProfitCurrency = trade.VolumeCurrency
-			balanceEntry.trade.Profit = -trade.Price * float64(trade.Quantity)
-			log.Printf("0profit = %f", balanceEntry.trade.Profit)
-			balanceEntry.trade.Strategy = trade.StrategyId
-			balanceEntry.ks = trade.Volume / (trade.Price * math.Abs(float64(trade.Quantity)))
-			log.Printf("Ks = %f", balanceEntry.ks)
-			if trade.Quantity > 0 {
-				balanceEntry.trade.Direction = "long"
-			} else {
-				balanceEntry.trade.Direction = "short"
-			}
-			balance[key] = balanceEntry
-		} else {
-			log.Printf("1profit = %f", balanceEntry.trade.Profit)
-			balanceEntry.balance += trade.Quantity
-			balanceEntry.trade.Profit += -trade.Price * float64(trade.Quantity)
-			balanceEntry.ks += trade.Volume / (trade.Price * math.Abs(float64(trade.Quantity)))
-			balanceEntry.ks /= 2
-			log.Printf("Ks = %f, profit = %f", balanceEntry.ks, balanceEntry.trade.Profit)
-
-			if balanceEntry.balance == 0 {
-				balanceEntry.trade.Profit = balanceEntry.trade.Profit * balanceEntry.ks
-				balanceEntry.trade.ExitTime = time.Unix(int64(trade.Timestamp), int64(trade.Useconds))
-				result = append(result, balanceEntry.trade)
-
-				pnl := cumulativePnL[balanceEntry.trade.Account]
-				pnl.Name = balanceEntry.trade.Account
-				pnl.current += balanceEntry.trade.Profit
-				t := balanceEntry.trade.ExitTime
-				pnl.Points = append(pnl.Points, DataPoint{t.Year(), int(t.Month()) - 1, t.Day(), t.Hour(), t.Minute(), t.Second(), pnl.current})
-				cumulativePnL[balanceEntry.trade.Account] = pnl
-			}
-			balance[key] = balanceEntry
+func makeCumulativePnLForAccount(account string, trades []db.ClosedTrade) ProfitSeries {
+	var result ProfitSeries
+	result.Name = account
+	current := 0.0
+	for _, trade := range(trades) {
+		if trade.Account == account {
+			current += trade.Profit
+			result.Points = append(result.Points, DataPoint { trade.ExitTime.Year(), int(trade.ExitTime.Month()), trade.ExitTime.Day(), trade.ExitTime.Hour(), trade.ExitTime.Minute(), trade.ExitTime.Second(), current})
 		}
 	}
-	profits := make([]ProfitSeries, 0, len(cumulativePnL))
-	for _, value := range cumulativePnL {
-		profits = append(profits, value)
-	}
-
-	return result, profits
+	return result
 }
 
+func makeCumulativePnL(accounts []string, trades []db.ClosedTrade) []ProfitSeries {
+	var profits []ProfitSeries
+	for _, account := range(accounts) {
+		profits = append(profits, makeCumulativePnLForAccount(account, trades))
+	}
+	return profits
+}
 
 func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Printf("ClosedTrades handler")
 	type ClosedTradesPageData struct {
 		Title string
-		Trades []ClosedTrade
+		Trades []db.ClosedTrade
 		Accounts []string
 		CurrentAccount string
 		CumulativeProfits []ProfitSeries
@@ -180,7 +118,17 @@ func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 	}
 	currentAccount := r.FormValue("account")
 
-	trades, cumulativePnL := aggregateClosedTrades(db.ReadAllTrades(handler.Db, currentAccount))
+	err = db.BalanceTrades(handler.Db)
+	if err != nil {
+		log.Printf("Unable to balance trades: %s", err.Error())
+	}
+	trades, err := db.GetAllClosedTrades(handler.Db)
+	if err != nil {
+		log.Printf("Unable to obtain trades: %s", err.Error())
+		return
+	}
+
+	cumulativePnL := makeCumulativePnL(accounts, trades)
 
 	page := ClosedTradesPageData { "Closed trades", trades, accounts, currentAccount, cumulativePnL }
 	t, err := template.New("closed_trades.html").Funcs(template.FuncMap {
