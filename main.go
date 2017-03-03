@@ -70,16 +70,16 @@ func sendHeartbeatResponse(peerId string, socket* zmq.Socket) {
 func handleClient(server* zmq.Socket, trades chan goldmine.Trade, t *tomb.Tomb, wg sync.WaitGroup) {
 	wg.Add(1)
 	defer wg.Done()
-	log.Printf("Waiting for next message")
+	//log.Printf("Waiting for next message")
 
 	msg, err := server.RecvMessage(0)
 	if err != nil {
 		return
 	}
-	log.Printf("Incoming message")
+	//log.Printf("Incoming message")
 
 	if len(msg) >= 3 {
-		log.Printf("Incoming json: %s", msg[2])
+		//log.Printf("Incoming json: %s", msg[2])
 		var incomingMessage interface{}
 
 		jsonErr := json.Unmarshal([]byte(msg[2]), &incomingMessage)
