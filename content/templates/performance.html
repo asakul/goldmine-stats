@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" href="/static/css/bootstrap.min.css" />
+<link rel="stylesheet" href="/static/css/custom.css" />
+<title>{{.Title}}</title>
+</head>
+<body>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+	<script src="http://code.highcharts.com/highcharts.js"></script>
+    <script src="/static/js/bootstrap.min.js"></script>
+
+	{{ template "navbar" . }}
+	<div class="container">
+		<div class="row">
+			<form role="form" action="/performance/" method="GET">
+				{{ range $index, $account := .Accounts }}
+				<label for="account-checkbox-{{$account}}" class="checkbox-inline">
+					<input type="checkbox" name="account-checkbox-{{$account}}" value="1" {{ if AccountIsChecked $account $.CheckedAccounts }} checked="true" {{ end }} onChange="this.form.submit();" />
+					{{$account}}
+				</label>
+				{{ end }}
+			</form>
+		</div>
+		<hr />
+		<div class="row">
+			<table class="table">
+				<tr> <td>Gross PnL </td> <td> {{.Result.PnL}} </td> </tr>
+			 	<tr> <td>Total trades </td> <td> {{.Result.TradeNum}} </td>
+				<tr> <td>Win </td> <td> {{.Result.TradeWinNum}} </td> </tr>
+				<tr> <td>Loss </td> <td> {{.Result.TradeLossNum}} </td> </tr>
+				<tr> <td>% Win </td> <td> {{printf "%.2f" .Result.TradeWinPercentage}}% </td> </tr>
+			 	<tr> <td>Total profit </td> <td> {{.Result.TotalProfit}} </td>
+			 	<tr> <td>Total loss </td> <td> {{.Result.TotalLoss}} </td>
+			 	<tr> <td>Profit factor </td> <td> {{printf "%.2f" .Result.ProfitFactor}} </td>
+			</table>
+		</div>
+	</div>
+</body>
+</html>
+

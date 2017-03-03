@@ -175,3 +175,104 @@ func (handler DeleteTradeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	db.DeleteTrade(handler.Db, id)
 	http.Redirect(w, r, "/trades", 302)
 }
+
+type PerformanceHandler struct {
+	Db *db.DbHandle
+	ContentDir string
+}
+
+type PerformanceResult struct {
+	PnL float64
+	TradeNum int
+	TradeWinNum int
+	TradeLossNum int
+	TradeWinPercentage float64
+	TotalProfit float64
+	TotalLoss float64
+	ProfitFactor float64
+}
+
+func hasAccount(acc string, accs []string) bool {
+	for _, v := range(accs) {
+		if v == acc {
+			return true
+		}
+	}
+	return false
+}
+
+func calculateResult(trades []db.ClosedTrade, accounts []string) PerformanceResult {
+	var result PerformanceResult
+	for _, trade := range(trades) {
+		if hasAccount(trade.Account, accounts) {
+			result.PnL += trade.Profit
+			result.TradeNum += 1
+			if trade.Profit > 0 {
+				result.TradeWinNum += 1
+				result.TotalProfit += trade.Profit
+			} else {
+				result.TradeLossNum += 1
+				result.TotalLoss -= trade.Profit
+			}
+		}
+	}
+	result.ProfitFactor = result.TotalProfit / result.TotalLoss
+	result.TradeWinPercentage = 100 * float64(result.TradeWinNum) / float64(result.TradeWinNum + result.TradeLossNum)
+	return result
+}
+
+func (handler PerformanceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Performance handler")
+	type PerformancePageData struct {
+		Title string
+		Accounts []string
+		CheckedAccounts []string
+		Result PerformanceResult
+	}
+
+	accounts, err := db.GetAllAccounts(handler.Db)
+	if err != nil {
+		log.Printf("Unable to obtain accounts: %s", err.Error())
+		return
+	}
+
+	checkedAccounts := make([]string, 0)
+	for _, account := range(accounts) {
+		if r.FormValue("account-checkbox-" + account) == "1" {
+			checkedAccounts = append(checkedAccounts, account)
+		}
+	}
+
+	trades, err := db.GetAllClosedTrades(handler.Db)
+	if err != nil {
+		log.Printf("Unable to obtain trades: %s", err.Error())
+		return
+	}
+	result := calculateResult(trades, checkedAccounts)
+
+	page := PerformancePageData { "Performance", accounts, checkedAccounts, result }
+	t, err := template.New("performance.html").Funcs(template.FuncMap {
+		"Abs" : func (a int) int {
+		if a < 0 {
+			return -a
+		} else {
+			return a
+		}},
+		"AccountIsChecked" : func (account string, checkedAccounts []string) bool {
+		for _,v := range(checkedAccounts) {
+			if account == v {
+				return true
+			}
+		}
+		return false }}).ParseFiles(handler.ContentDir + "/content/templates/performance.html",
+	handler.ContentDir + "/content/templates/navbar.html")
+	if err != nil {
+		log.Printf("Unable to parse template: %s", err.Error())
+		return
+	}
+	err = t.Execute(w, page)
+	if err != nil {
+		log.Printf("Unable to execute template: %s", err.Error())
+	}
+
+}
