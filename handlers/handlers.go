@@ -127,6 +127,15 @@ func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		log.Printf("Unable to obtain trades: %s", err.Error())
 		return
 	}
+	if currentAccount != "" {
+		filteredTrades := make([]db.ClosedTrade, 0)
+		for _, trade := range trades {
+			if trade.Account == currentAccount {
+				filteredTrades = append(filteredTrades, trade)
+			}
+		}
+		trades = filteredTrades
+	}
 
 	cumulativePnL := makeCumulativePnL(accounts, trades)
 
