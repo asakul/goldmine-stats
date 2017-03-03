@@ -97,6 +97,26 @@ func WriteDatabase(db *DbHandle, trades chan goldmine.Trade, t *tomb.Tomb, wg sy
 	}
 }
 
+func GetAllStrategies(db *DbHandle) ([]string, error) {
+	var strategies []string
+	rows, err := db.Db.Query("SELECT strategyId FROM trades GROUP BY strategyId")
+	if err != nil {
+		log.Printf("Unable to get all strategies: %s", err)
+		return nil, err
+	}
+
+	for rows.Next() {
+		var strat string
+		err = rows.Scan(&strat)
+		if err != nil {
+			log.Printf("Unable to obtain all strategies: %s", err.Error())
+			return strategies, err
+		}
+		strategies = append(strategies, strat)
+	}
+	return strategies, nil
+}
+
 func ReadAllTrades(db *DbHandle, account string) []goldmine.Trade {
 	var trades []goldmine.Trade
 	var rows *sql.Rows

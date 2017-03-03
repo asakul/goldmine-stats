@@ -102,6 +102,16 @@ func makeCumulativePnL(accounts []string, trades []db.ClosedTrade) []ProfitSerie
 	return profits
 }
 
+func hasString(acc string, accs []string) bool {
+	for _, v := range(accs) {
+		if v == acc {
+			return true
+		}
+	}
+	return false
+}
+
+
 func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("ClosedTrades handler")
 	type ClosedTradesPageData struct {
@@ -110,6 +120,8 @@ func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		Accounts []string
 		CurrentAccount string
 		CumulativeProfits []ProfitSeries
+		Strategies []string
+		CheckedStrategies []string
 	}
 	accounts, err := db.GetAllAccounts(handler.Db)
 	if err != nil {
@@ -127,6 +139,7 @@ func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		log.Printf("Unable to obtain trades: %s", err.Error())
 		return
 	}
+
 	if currentAccount != "" {
 		filteredTrades := make([]db.ClosedTrade, 0)
 		for _, trade := range trades {
@@ -137,9 +150,31 @@ func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		trades = filteredTrades
 	}
 
+	allStrategies, err := db.GetAllStrategies(handler.Db)
+	if err != nil {
+		return
+	}
+
+	checkedStrategies := make([]string, 0)
+	for _, strat := range(allStrategies) {
+		if r.FormValue("strategy-" + strat) == "1" {
+			checkedStrategies = append(checkedStrategies, strat)
+		}
+	}
+
+	if len(checkedStrategies) > 0 {
+		filteredTrades := make([]db.ClosedTrade, 0)
+		for _, trade := range trades {
+			if hasString(trade.Strategy, checkedStrategies) {
+				filteredTrades = append(filteredTrades, trade)
+			}
+		}
+		trades = filteredTrades
+	}
+
 	cumulativePnL := makeCumulativePnL(accounts, trades)
 
-	page := ClosedTradesPageData { "Closed trades", trades, accounts, currentAccount, cumulativePnL }
+	page := ClosedTradesPageData { "Closed trades", trades, accounts, currentAccount, cumulativePnL, allStrategies, checkedStrategies }
 	t, err := template.New("closed_trades.html").Funcs(template.FuncMap {
 		"Abs" : func (a int) int {
 		if a < 0 {
@@ -149,7 +184,14 @@ func (handler ClosedTradesHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		}},
 		"PrintTime" : func (t time.Time) string {
 			return t.Format("2006-01-02 15:04:05.000")
-		}}).ParseFiles(handler.ContentDir + "/content/templates/closed_trades.html",
+		},
+		"StrategyIsChecked" : func (strat string, checkedStrategies []string) bool {
+			for _,v := range(checkedStrategies) {
+				if strat == v {
+					return true
+				}
+			}
+		return false }}).ParseFiles(handler.ContentDir + "/content/templates/closed_trades.html",
 	handler.ContentDir + "/content/templates/navbar.html")
 	if err != nil {
 		log.Printf("Unable to parse template: %s", err.Error())
@@ -192,19 +234,10 @@ type PerformanceResult struct {
 	ProfitFactor float64
 }
 
-func hasAccount(acc string, accs []string) bool {
-	for _, v := range(accs) {
-		if v == acc {
-			return true
-		}
-	}
-	return false
-}
-
 func calculateResult(trades []db.ClosedTrade, accounts []string) PerformanceResult {
 	var result PerformanceResult
 	for _, trade := range(trades) {
-		if hasAccount(trade.Account, accounts) {
+		if hasString(trade.Account, accounts) {
 			result.PnL += trade.Profit
 			result.TradeNum += 1
 			if trade.Profit > 0 {
